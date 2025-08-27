@@ -1,0 +1,58 @@
+FROM python:3.11
+
+# Install system dependencies for building and GUI
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libgl1 \
+    libxext6 \
+    libsm6 \
+    libxrender1 \
+    libx11-dev \
+    libglu1-mesa \
+    xvfb \
+    sudo \
+    git \
+    libopenmpi-dev \
+    openmpi-bin \ 
+    libtrilinos-zoltan-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip and install Python packages
+RUN pip install --upgrade pip && \
+    pip install numpy matplotlib h5py vtk mayavi pyqt5 mpi4py
+
+# Create non-root user before copying code
+RUN useradd -m pysph && \
+    echo "pysph ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Set working directory for source build
+WORKDIR /app
+
+# Copy source code
+COPY ./pysph /app/pysph
+COPY ./pyzoltan /app/pyzoltan
+
+WORKDIR /app/pyzoltan
+# Install PySPH from source
+RUN ./build_zoltan.sh /home/pysph/zoltan
+
+ENV ZOLTAN_INCLUDE=/usr/include/trilinos
+ENV ZOLTAN_LIBRARY=/usr/lib/x86_64-linux-gnu
+ENV USE_TRILINOS=1
+ENV ZOLTAN=/home/pysph/zoltan
+
+RUN pip install pyzoltan
+
+WORKDIR /app/pysph
+RUN pip install -r requirements.txt && \
+    python setup.py install
+
+# Switch to non-root user
+USER pysph
+WORKDIR /home/pysph
+
+# Set display environment for headless Mayavi
+ENV DISPLAY=:99
+ENV ETS_TOOLKIT=qt5
+CMD ["bash"]
+
